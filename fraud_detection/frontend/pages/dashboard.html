@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — FraudShield</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="page-header">
+      <div class="page-title">Dashboard <span>Overview</span></div>
+      <div class="page-actions">
+        <span id="last-updated" class="text-muted" style="font-size:11px"></span>
+        <button class="btn btn-ghost" onclick="loadDashboard()">↺ Refresh</button>
+      </div>
+    </div>
+
+    <div class="page-body">
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid">
+        <div class="kpi-card info">
+          <div class="kpi-label">Total Transactions</div>
+          <div class="kpi-value info" id="kpi-total">—</div>
+          <div class="kpi-sub">All time checks</div>
+        </div>
+        <div class="kpi-card danger">
+          <div class="kpi-label">High Risk</div>
+          <div class="kpi-value danger" id="kpi-high">—</div>
+          <div class="kpi-sub">HIGH + CRITICAL</div>
+        </div>
+        <div class="kpi-card warn">
+          <div class="kpi-label">Avg Fraud Prob</div>
+          <div class="kpi-value warn" id="kpi-avgprob">—</div>
+          <div class="kpi-sub">Model confidence</div>
+        </div>
+        <div class="kpi-card success">
+          <div class="kpi-label">Avg Amount</div>
+          <div class="kpi-value success" id="kpi-avgamt" style="font-size:20px">—</div>
+          <div class="kpi-sub">Per transaction</div>
+        </div>
+      </div>
+
+      <!-- RISK DISTRIBUTION + RECENT FLAGGED -->
+      <div class="grid-2" style="margin-bottom:20px">
+
+        <!-- Risk Distribution -->
+        <div class="card">
+          <div class="card-title">Risk Distribution</div>
+          <div id="risk-dist">
+            <div class="text-muted" style="font-size:12px;padding:12px 0">No data yet. Run a fraud check.</div>
+          </div>
+        </div>
+
+        <!-- Recent Flagged Transactions -->
+        <div class="card">
+          <div class="card-title">Recent Flagged</div>
+          <div id="recent-flagged">
+            <div class="text-muted" style="font-size:12px;padding:12px 0">No flagged transactions.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Transaction Feed -->
+      <div class="card">
+        <div class="card-title">Live Transaction Feed
+          <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);font-weight:400">
+            auto-refreshes every 10s
+          </span>
+        </div>
+        <div id="live-feed">
+          <div class="text-muted" style="font-size:12px;padding:12px 0">Awaiting transactions...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/utils.js"></script>
+<script>
+AUTH.check();
+renderSidebar("dashboard.html");
+
+async function loadDashboard() {
+  try {
+    const [stats, hist] = await Promise.all([
+      apiFetch("/stats"),
+      apiFetch("/history?limit=20")
+    ]);
+
+    // KPIs
+    document.getElementById("kpi-total").textContent   = stats.total_transactions || 0;
+    document.getElementById("kpi-high").textContent    = stats.high_risk_count || 0;
+    document.getElementById("kpi-avgprob").textContent = stats.avg_fraud_probability != null
+      ? fmtPct(stats.avg_fraud_probability) : "—";
+    document.getElementById("kpi-avgamt").textContent  = stats.avg_amount != null
+      ? fmt$(stats.avg_amount) : "—";
+
+    // Risk distribution bars
+    const dist = stats.risk_distribution || {};
+    const total = Object.values(dist).reduce((a,b) => a+b, 0) || 1;
+    const levels = ["LOW","MEDIUM","HIGH","CRITICAL"];
+    const colors = { LOW:"var(--green)", MEDIUM:"var(--yellow)", HIGH:"var(--orange)", CRITICAL:"var(--critical)" };
+    document.getElementById("risk-dist").innerHTML = levels.map(l => `
+      <div style="margin-bottom:12px">
+        <div class="flex items-center gap-8" style="margin-bottom:4px">
+          <span style="font-size:11px;color:${colors[l]};width:60px">${l}</span>
+          <div class="progress-bar-wrap" style="flex:1">
+            <div class="progress-bar" style="width:${((dist[l]||0)/total*100).toFixed(1)}%;background:${colors[l]}"></div>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted);width:30px;text-align:right">${dist[l]||0}</span>
+        </div>
+      </div>`).join("");
+
+    // Recent flagged
+    const flagged = (stats.recent_flagged || []);
+    document.getElementById("recent-flagged").innerHTML = flagged.length
+      ? flagged.map(r => `
+        <div class="feed-item">
+          <div>
+            <div class="feed-id">${r.transaction_id}</div>
+            <div class="feed-time">${fmtDate(r.timestamp)}</div>
+          </div>
+          <div class="flex items-center gap-8">
+            <span class="feed-amt">${fmt$(r.input.amount)}</span>
+            ${riskBadge(r.risk_level)}
+          </div>
+        </div>`).join("")
+      : `<div class="text-muted" style="font-size:12px;padding:12px 0">No flagged transactions.</div>`;
+
+    // Live feed
+    const records = hist.records || [];
+    document.getElementById("live-feed").innerHTML = records.length
+      ? records.slice(0, 8).map(r => `
+        <div class="feed-item">
+          <div>
+            <div style="font-size:11px;color:var(--text)">${r.transaction_id}</div>
+            <div class="feed-time">${fmtDate(r.timestamp)}</div>
+          </div>
+          <div class="flex items-center gap-8">
+            <span class="feed-amt">${fmt$(r.input.amount)}</span>
+            <span style="font-size:11px;color:var(--text-muted)">${fmtPct(r.fraud_probability)}</span>
+            ${riskBadge(r.risk_level)}
+          </div>
+        </div>`).join("")
+      : `<div class="text-muted" style="font-size:12px;padding:12px 0">No transactions yet.</div>`;
+
+    document.getElementById("last-updated").textContent =
+      "Updated " + new Date().toLocaleTimeString();
+
+  } catch(e) {
+    toast("Could not load dashboard: " + e.message, "error");
+  }
+}
+
+loadDashboard();
+setInterval(loadDashboard, 10000);
+</script>
+</body>
+</html>
