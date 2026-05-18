@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>History</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+
+<div class="sidebar">
+    <h2>💳 FinTech AI</h2>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="analytics.html">Analytics</a>
+    <a href="history.html">History</a>
+</div>
+
+<div class="main">
+
+<div class="header">
+    Transaction History
+    <button onclick="toggleTheme()">🌗</button>
+</div>
+
+<button onclick="downloadCSV()">Download Report</button>
+
+<table>
+    <thead>
+        <tr>
+            <th>Amount</th>
+            <th>Risk</th>
+        </tr>
+    </thead>
+    <tbody id="historyTable"></tbody>
+</table>
+
+</div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
